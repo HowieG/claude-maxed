@@ -1,0 +1,107 @@
+@import "tailwindcss";
+
+@theme {
+  --color-warm: #d4a574;
+  --color-warm-dim: #a07850;
+  --color-bg: #1a1a1a;
+  --color-bg-light: #2a2a2a;
+  --color-bg-lighter: #3a3a3a;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  overscroll-behavior: none;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.chat-panel {
+  touch-action: manipulation;
+}
+
+@keyframes clip-flash {
+  0% { background-color: rgba(245, 158, 11, 0.4); }
+  100% { background-color: transparent; }
+}
+.clip-flash {
+  animation: clip-flash 0.4s ease-out;
+}
+
+@keyframes pulse-mic {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.1); opacity: 0.8; }
+}
+.pulse-mic {
+  animation: pulse-mic 1.5s ease-in-out infinite;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #555;
+  border-radius: 3px;
+}
+
+.message-content h1,
+.message-content h2,
+.message-content h3 {
+  font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+.message-content h1 { font-size: 1.25em; }
+.message-content h2 { font-size: 1.125em; }
+.message-content h3 { font-size: 1em; }
+.message-content p { margin-bottom: 0.75em; }
+.message-content ul, .message-content ol {
+  margin-left: 1.5em;
+  margin-bottom: 0.75em;
+}
+.message-content ul { list-style-type: disc; }
+.message-content ol { list-style-type: decimal; }
+.message-content li { margin-bottom: 0.25em; }
+.message-content code {
+  background: rgba(255,255,255,0.1);
+  padding: 0.15em 0.35em;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+.message-content pre {
+  background: rgba(0,0,0,0.3);
+  padding: 1em;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin-bottom: 0.75em;
+}
+.message-content pre code {
+  background: transparent;
+  padding: 0;
+}
+.message-content blockquote {
+  border-left: 3px solid #d4a574;
+  padding-left: 1em;
+  margin-left: 0;
+  margin-bottom: 0.75em;
+  opacity: 0.8;
+}
+.message-content a {
+  color: #d4a574;
+  text-decoration: underline;
+}
+.message-content table {
+  border-collapse: collapse;
+  margin-bottom: 0.75em;
+  width: 100%;
+}
+.message-content th, .message-content td {
+  border: 1px solid #555;
+  padding: 0.5em;
+  text-align: left;
+}
+.message-content th {
+  background: rgba(255,255,255,0.05);
+}

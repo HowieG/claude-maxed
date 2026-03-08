@@ -1,4 +1,4 @@
-const DEFAULT_PROXY_URL = '';
+const DEFAULT_PROXY_URL = '/api/claude';
 
 export function getProxyUrl() {
   return localStorage.getItem('proxyUrl') || DEFAULT_PROXY_URL;

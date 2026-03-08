@@ -6,6 +6,7 @@ export function Settings({ isOpen, onClose }) {
   const [ttsRate, setTtsRate] = useState(1.0);
   const [ttsVoice, setTtsVoice] = useState('');
   const [defaultMode, setDefaultMode] = useState('speech');
+  const [handsFreeMode, setHandsFreeMode] = useState(false);
   const [voices, setVoices] = useState([]);
 
   useEffect(() => {
@@ -14,6 +15,7 @@ export function Settings({ isOpen, onClose }) {
     setTtsRate(parseFloat(localStorage.getItem('ttsRate') || '1.0'));
     setTtsVoice(localStorage.getItem('ttsVoice') || '');
     setDefaultMode(localStorage.getItem('defaultMode') || 'speech');
+    setHandsFreeMode(localStorage.getItem('handsFreeModeEnabled') === 'true');
 
     const v = speechSynthesis.getVoices();
     setVoices(v);
@@ -28,6 +30,7 @@ export function Settings({ isOpen, onClose }) {
     localStorage.setItem('ttsRate', String(ttsRate));
     localStorage.setItem('ttsVoice', ttsVoice);
     localStorage.setItem('defaultMode', defaultMode);
+    localStorage.setItem('handsFreeModeEnabled', String(handsFreeMode));
     onClose();
   };
 
@@ -100,6 +103,19 @@ export function Settings({ isOpen, onClose }) {
             <option value="speech">Speech</option>
             <option value="research">Research</option>
           </select>
+        </label>
+
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={handsFreeMode}
+            onChange={(e) => setHandsFreeMode(e.target.checked)}
+            className="w-4 h-4 accent-warm"
+          />
+          <div>
+            <span className="text-sm text-gray-300">Hands-free interrupts</span>
+            <p className="text-xs text-gray-500">Say &quot;ok wait&quot; or &quot;ok claude&quot; to interrupt TTS</p>
+          </div>
         </label>
 
         <div className="flex gap-3 pt-2">

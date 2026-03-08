@@ -1,19 +1,82 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useClaude } from '../hooks/useClaude';
 import { useSpeechRecognition } from '../hooks/useSpeechRecognition';
 import { useSpeechSynthesis } from '../hooks/useSpeechSynthesis';
 import { useFileContext } from '../hooks/useFileContext';
+import { useFileReader } from '../hooks/useFileReader';
+import { useWakeWordInterrupt } from '../hooks/useWakeWordInterrupt';
 import { ContextTray } from './ContextTray';
 import { TTSPlayer } from './TTSPlayer';
-import { SPEECH_SYSTEM_PROMPT } from '../lib/prompts';
+import { SPEECH_SYSTEM_PROMPT, FILE_READER_SYSTEM_PROMPT } from '../lib/prompts';
 import ReactMarkdown from 'react-markdown';
+
+const READ_FILE_PATTERN = /\b(read\s+(this|the)\s+file|read\s+it\s+to\s+me|walk\s+me\s+through)\b/i;
+const RESUME_PATTERN = /\b(continue|resume|keep\s+reading|go\s+on|carry\s+on)\b/i;
 
 export function SpeechMode() {
   const { messages, isLoading, streamingText, sendMessage, stopStreaming, resetConversation } = useClaude();
   const { isListening, transcript, interimTranscript, startListening, stopListening, isSupported } = useSpeechRecognition();
   const { isSpeaking, currentSentenceIndex, totalSentences, speak, stop: stopTTS, initialize } = useSpeechSynthesis();
   const { files, addFiles, removeFile, clearFiles } = useFileContext();
+  const fileReader = useFileReader();
   const [ttsInitialized, setTtsInitialized] = useState(false);
+  const handsFreeEnabled = localStorage.getItem('handsFreeModeEnabled') === 'true';
+
+  // Track TTS sentence position for file reader
+  useEffect(() => {
+    if (fileReader.isReading && !fileReader.isTangent && currentSentenceIndex >= 0) {
+      fileReader.updatePosition(currentSentenceIndex);
+    }
+  }, [currentSentenceIndex, fileReader.isReading, fileReader.isTangent]);
+
+  // Wake word interrupt handlers
+  const wakeWordPauseRef = useRef(null);
+
+  const handleWakeWordPause = useCallback(() => {
+    stopTTS();
+    if (fileReader.isReading) fileReader.interrupt();
+  }, [stopTTS, fileReader]);
+
+  const handleWakeWord = useCallback(() => {
+    // User said the wake word — start listening for their question
+    startListening();
+  }, [startListening]);
+
+  const handleWakeWordResume = useCallback(() => {
+    // False alarm — resume TTS
+    if (fileReader.isReading && fileReader.isTangent) {
+      const { remainingText } = fileReader.resume();
+      if (remainingText) {
+        const rate = parseFloat(localStorage.getItem('ttsRate') || '1.0');
+        const voiceName = localStorage.getItem('ttsVoice') || '';
+        speak(remainingText, { rate, voiceName });
+      }
+    }
+    // For non-file-reader speech, we can't easily resume normal responses
+    // since we don't track their sentence position the same way
+  }, [fileReader, speak]);
+
+  const wakeWord = useWakeWordInterrupt({
+    onPause: handleWakeWordPause,
+    onWakeWord: handleWakeWord,
+    onResume: handleWakeWordResume,
+  });
+
+  // Start/stop wake word monitoring when TTS starts/stops
+  useEffect(() => {
+    if (handsFreeEnabled && isSpeaking && !wakeWord.isMonitoring) {
+      wakeWord.startMonitoring();
+    } else if (handsFreeEnabled && !isSpeaking && wakeWord.isMonitoring) {
+      wakeWord.stopMonitoring();
+    }
+  }, [isSpeaking, handsFreeEnabled]);
+
+  // Restart VAD polling after resume
+  useEffect(() => {
+    if (handsFreeEnabled && isSpeaking && wakeWord.isMonitoring) {
+      wakeWord.resumeMonitoring();
+    }
+  }, [isSpeaking, handsFreeEnabled]);
 
   const handleMicTap = useCallback(async () => {
     // Initialize TTS on first user gesture
@@ -22,14 +85,16 @@ export function SpeechMode() {
       setTtsInitialized(true);
     }
 
+    // One-tap interrupt: stop TTS + immediately start listening
     if (isSpeaking) {
       stopTTS();
+      if (fileReader.isReading) fileReader.interrupt();
+      setTimeout(() => startListening(), 100); // iOS needs gap after cancel
       return;
     }
 
     if (isListening) {
       stopListening();
-      // transcript will be used after recognition ends
     } else {
       if (isLoading) {
         stopStreaming();
@@ -37,11 +102,56 @@ export function SpeechMode() {
       }
       startListening();
     }
-  }, [isListening, isLoading, isSpeaking, ttsInitialized, startListening, stopListening, stopStreaming, stopTTS, initialize]);
+  }, [isListening, isLoading, isSpeaking, ttsInitialized, startListening, stopListening, stopStreaming, stopTTS, initialize, fileReader]);
+
+  // Handle file reading via voice command or resume
+  const handleReadFile = useCallback(async (file) => {
+    if (!ttsInitialized) {
+      initialize();
+      setTtsInitialized(true);
+    }
+
+    try {
+      const prompt = `Here is the file content to rewrite for speech:\n\n[File: ${file.name}]\n\`\`\`\n${file.content}\n\`\`\``;
+      const response = await sendMessage(prompt, FILE_READER_SYSTEM_PROMPT, []);
+      if (response) {
+        fileReader.startReading(response, file.name);
+        const rate = parseFloat(localStorage.getItem('ttsRate') || '1.0');
+        const voiceName = localStorage.getItem('ttsVoice') || '';
+        speak(response, { rate, voiceName });
+      }
+    } catch {
+      // Error shown in messages
+    }
+  }, [ttsInitialized, initialize, sendMessage, fileReader, speak]);
+
+  const handleResumeReading = useCallback(() => {
+    const { remainingText } = fileReader.resume();
+    if (remainingText) {
+      const rate = parseFloat(localStorage.getItem('ttsRate') || '1.0');
+      const voiceName = localStorage.getItem('ttsVoice') || '';
+      speak(remainingText, { rate, voiceName });
+    }
+  }, [fileReader, speak]);
 
   // When recognition ends and we have a transcript, send it
   useEffect(() => {
     if (!isListening && transcript) {
+      // Check for resume voice command
+      if (fileReader.isReading && fileReader.isTangent && RESUME_PATTERN.test(transcript)) {
+        handleResumeReading();
+        return;
+      }
+
+      // Check for read-file voice command
+      if (files.length > 0 && READ_FILE_PATTERN.test(transcript)) {
+        const textFile = files.find((f) => f.type === 'text');
+        if (textFile) {
+          handleReadFile(textFile);
+          return;
+        }
+      }
+
       const doSend = async () => {
         try {
           const response = await sendMessage(transcript, SPEECH_SYSTEM_PROMPT, files);
@@ -58,8 +168,15 @@ export function SpeechMode() {
     }
   }, [isListening, transcript]);
 
+  const handleReset = useCallback(() => {
+    fileReader.reset();
+    resetConversation();
+  }, [fileReader, resetConversation]);
+
   const currentText = streamingText || (messages.length > 0 ? messages[messages.length - 1]?.content : '');
   const showText = typeof currentText === 'string' ? currentText : '';
+
+  const showResumeButton = fileReader.isReading && fileReader.isTangent && !isSpeaking && !isLoading && !isListening;
 
   return (
     <div className="flex flex-col h-full">
@@ -89,25 +206,50 @@ export function SpeechMode() {
         )}
       </div>
 
-      {/* TTS progress */}
+      {/* TTS progress / Reading progress */}
       {isSpeaking && (
         <div className="px-6 pb-2">
-          <TTSPlayer
-            isSpeaking={isSpeaking}
-            onStop={stopTTS}
-            currentSentenceIndex={currentSentenceIndex}
-            totalSentences={totalSentences}
-          />
+          {fileReader.isReading && !fileReader.isTangent ? (
+            <div className="flex items-center gap-3 text-sm text-gray-400">
+              <span className="text-warm">Reading {fileReader.fileName}</span>
+              <span>{fileReader.currentPosition + 1} / {fileReader.totalSentences}</span>
+              <div className="flex-1 h-1 bg-bg-lighter rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-warm/60 rounded-full transition-all"
+                  style={{ width: `${((fileReader.currentPosition + 1) / fileReader.totalSentences) * 100}%` }}
+                />
+              </div>
+            </div>
+          ) : (
+            <TTSPlayer
+              isSpeaking={isSpeaking}
+              onStop={stopTTS}
+              currentSentenceIndex={currentSentenceIndex}
+              totalSentences={totalSentences}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Resume Reading button */}
+      {showResumeButton && (
+        <div className="px-6 pb-2 flex justify-center">
+          <button
+            onClick={handleResumeReading}
+            className="px-4 py-2 bg-warm/20 text-warm rounded-full text-sm hover:bg-warm/30 transition-colors"
+          >
+            Resume Reading {fileReader.fileName}
+          </button>
         </div>
       )}
 
       {/* Context tray */}
-      <ContextTray files={files} onRemove={removeFile} onAddFiles={addFiles} />
+      <ContextTray files={files} onRemove={removeFile} onAddFiles={addFiles} onReadFile={handleReadFile} />
 
       {/* Controls */}
       <div className="flex items-center justify-center gap-4 px-6 py-6">
         <button
-          onClick={resetConversation}
+          onClick={handleReset}
           className="w-11 h-11 flex items-center justify-center rounded-full bg-bg-lighter text-gray-400 hover:text-gray-200"
           title="New conversation"
         >

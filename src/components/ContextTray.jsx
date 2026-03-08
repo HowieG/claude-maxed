@@ -7,7 +7,7 @@ const FILE_ICONS = {
   pdf: '📑',
 };
 
-export function ContextTray({ files, onRemove, onAddFiles }) {
+export function ContextTray({ files, onRemove, onAddFiles, onReadFile }) {
   const inputRef = useRef(null);
   const tokens = estimateTokens(files);
   const tokenPct = Math.round((tokens / 200000) * 100);
@@ -44,6 +44,17 @@ export function ContextTray({ files, onRemove, onAddFiles }) {
         >
           <span>{FILE_ICONS[f.type] || '📄'}</span>
           <span className="truncate">{f.name}</span>
+          {onReadFile && f.type === 'text' && (
+            <button
+              onClick={() => onReadFile(f)}
+              className="text-gray-500 hover:text-warm ml-0.5"
+              title="Read aloud"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02z"/>
+              </svg>
+            </button>
+          )}
           <button
             onClick={() => onRemove(f.id)}
             className="text-gray-500 hover:text-red-400 ml-1"

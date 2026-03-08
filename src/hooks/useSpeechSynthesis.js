@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { splitSentences } from '../lib/textUtils';
 
 export function useSpeechSynthesis() {
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -30,7 +31,7 @@ export function useSpeechSynthesis() {
     speechSynthesis.cancel();
     cancelledRef.current = false;
 
-    const sentences = text.match(/[^.!?]+[.!?]+[\s]*/g) || [text];
+    const sentences = splitSentences(text);
     totalSentencesRef.current = sentences.length;
     let index = 0;
 
